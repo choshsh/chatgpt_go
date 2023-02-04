@@ -3,7 +3,6 @@ package chatgpt_go
 import (
 	"fmt"
 	"github.com/goccy/go-json"
-	"github.com/k0kubun/pp/v3"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -15,7 +14,6 @@ func TestCompletion(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Greater(t, len(result.Choices), 0)
 	assert.NotEqual(t, result.Choices[0].Text, "")
-	pp.Println(result.Choices[0].Text)
 }
 
 func TestCompletionStream(t *testing.T) {
