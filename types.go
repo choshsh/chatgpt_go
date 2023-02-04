@@ -111,9 +111,3 @@ type ChatGptStream struct {
 type BaseErrorResponse struct {
 	message *string
 }
-
-func NewBaseErrorResponse(msg *string) *BaseErrorResponse {
-	return &BaseErrorResponse{
-		message: msg,
-	}
-}

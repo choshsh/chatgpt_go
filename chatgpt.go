@@ -8,6 +8,7 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/joho/godotenv"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -37,8 +38,6 @@ func Completion(prompt string, cfg *CompletionConfig) (*CompletionResponse, erro
 		return nil, err
 	}
 
-	defer resp.Body.Close()
-
 	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -65,62 +64,68 @@ func CompletionStream(prompt string, cfg *CompletionConfig) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
-	streamCh := make(chan string)
-	errCh := make(chan error)
-	done := make(chan struct{})
-
-	go func() {
-		defer resp.Body.Close()
-		defer close(streamCh)
-		defer close(errCh)
-		defer close(done)
-
-		for {
-			line, errInCh := bufio.NewReader(resp.Body).ReadBytes('\n')
-			if errInCh != nil {
-				if errInCh.Error() == "EOF" {
-					done <- struct{}{}
-					break
-				}
-				errCh <- errInCh
-				break
-			}
-
-			// suffix '\n'
-			line = line[:len(line)-1]
-			if bytes.Equal(line, []byte(EofText)) {
-				done <- struct{}{}
-				break
-			}
-
-			var chatGptStream ChatGptStream
-			errInCh = json.Unmarshal(line[5:], &chatGptStream)
-			if errInCh != nil {
-				errCh <- errInCh
-				break
-			}
-
-		if isStreamStopped(chatGptStream) {
-				done <- struct{}{}
-				break
-			}
-
-			streamCh <- chatGptStream.Choices[0].Text
-		}
-	}()
+	streamMessage, done, errorChannel := make(chan string), make(chan struct{}), make(chan error)
+	go handleCompletionStream(resp, streamMessage, done, errorChannel)
 
 	for {
-		// Print response
 		select {
-		case msg := <-streamCh:
+		case msg := <-streamMessage:
 			fmt.Print(msg)
 		case <-done:
 			return nil
-		case e := <-errCh:
+		case e := <-errorChannel:
 			return e
 		case <-time.After(1 * time.Minute):
 			return errors.New("context deadline exceeded")
+		}
+	}
+}
+
+func handleCompletionStream(resp *http.Response, streamMessage chan string, done chan struct{}, errorChannel chan error) {
+	defer resp.Body.Close()
+	defer close(streamMessage)
+	defer close(done)
+	defer close(errorChannel)
+
+	reader := bufio.NewReader(resp.Body)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			return
+		}
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		line = bytes.TrimSuffix(line, []byte(`\n`))
+		if isEofText(line) {
+			done <- struct{}{}
+			return
+		}
+
+		// TrimPrefix "data: "
+		var chatGptStream ChatGptStream
+		err = json.Unmarshal(bytes.TrimPrefix(line, []byte(`data: `)), &chatGptStream)
+		if err != nil {
+			errorChannel <- err
+			return
+		}
+
+		if isStreamStopped(chatGptStream) {
+			done <- struct{}{}
+			return
+		}
+
+		streamMessage <- chatGptStream.Choices[0].Text
+	}
+}
+
+func isEofText(line []byte) bool {
+	return bytes.Equal(line, []byte(EofText))
+}
+
 func isStreamStopped(chatGptStream ChatGptStream) bool {
 	stopReasons := []string{"stop", "length"}
 	finishReason := chatGptStream.Choices[0].FinishReason
@@ -157,6 +162,10 @@ func SendMessage(payload *completionPayload) (*http.Response, error) {
 	resp, err := client.Do(reqp)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		rawBytes, _ := io.ReadAll(resp.Body)
+		return nil, errors.New(string(rawBytes))
 	}
 
 	return resp, nil
