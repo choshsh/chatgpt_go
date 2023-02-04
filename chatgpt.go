@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/goccy/go-json"
+	"github.com/joho/godotenv"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 var OpenAiToken string
 
 func init() {
+	godotenv.Load()
 	var ok bool
 
 	OpenAiToken, ok = os.LookupEnv("OPENAI_TOKEN")
