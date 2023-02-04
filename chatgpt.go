@@ -101,7 +101,7 @@ func CompletionStream(prompt string, cfg *CompletionConfig) error {
 				break
 			}
 
-			if chatGptStream.Choices[0].FinishReason == "stop" {
+		if isStreamStopped(chatGptStream) {
 				done <- struct{}{}
 				break
 			}
@@ -121,8 +121,18 @@ func CompletionStream(prompt string, cfg *CompletionConfig) error {
 			return e
 		case <-time.After(1 * time.Minute):
 			return errors.New("context deadline exceeded")
+func isStreamStopped(chatGptStream ChatGptStream) bool {
+	stopReasons := []string{"stop", "length"}
+	finishReason := chatGptStream.Choices[0].FinishReason
+
+	for _, stopReason := range stopReasons {
+		if finishReason == stopReason {
+			fmt.Println()
+			log.Printf("Completion is stopped due to [%s]\n", stopReason)
+			return true
 		}
 	}
+	return false
 }
 
 // SendMessage Request to OpenAI API and return *http.Response
