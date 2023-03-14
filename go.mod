@@ -3,7 +3,7 @@ module com.github/choshsh/chatgpt-gp
 go 1.19
 
 require (
-	github.com/goccy/go-json v0.10.0
+	github.com/goccy/go-json v0.10.1
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.8.2
 )
